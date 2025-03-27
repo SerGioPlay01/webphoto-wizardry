@@ -124,6 +124,132 @@ export const getFilterClass = (filterName: string): string => {
   return filter ? filter.class : '';
 };
 
+// Remove background from canvas using simple color detection
+export const removeBgFromCanvas = async (canvas: HTMLCanvasElement): Promise<HTMLCanvasElement | null> => {
+  return new Promise((resolve) => {
+    try {
+      // Create a new canvas
+      const resultCanvas = document.createElement('canvas');
+      resultCanvas.width = canvas.width;
+      resultCanvas.height = canvas.height;
+      const resultCtx = resultCanvas.getContext('2d', { willReadFrequently: true });
+      
+      if (!resultCtx) {
+        resolve(null);
+        return;
+      }
+      
+      // Get original image data
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+      
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      const resultImageData = resultCtx.createImageData(canvas.width, canvas.height);
+      const resultData = resultImageData.data;
+      
+      // Simple edge detection and background removal algorithm
+      // This is a simplified version - in a real app, consider using more advanced algorithms
+      // or machine learning models for more accurate results
+      
+      // First pass - detect edges
+      const edges = new Uint8Array(data.length / 4);
+      const threshold = 20; // Adjust threshold as needed
+      
+      for (let y = 1; y < canvas.height - 1; y++) {
+        for (let x = 1; x < canvas.width - 1; x++) {
+          const idx = (y * canvas.width + x) * 4;
+          const topIdx = ((y - 1) * canvas.width + x) * 4;
+          const bottomIdx = ((y + 1) * canvas.width + x) * 4;
+          const leftIdx = (y * canvas.width + (x - 1)) * 4;
+          const rightIdx = (y * canvas.width + (x + 1)) * 4;
+          
+          // Calculate color difference with neighbors
+          const diffTop = Math.abs(data[idx] - data[topIdx]) + 
+                          Math.abs(data[idx + 1] - data[topIdx + 1]) + 
+                          Math.abs(data[idx + 2] - data[topIdx + 2]);
+                          
+          const diffBottom = Math.abs(data[idx] - data[bottomIdx]) + 
+                             Math.abs(data[idx + 1] - data[bottomIdx + 1]) + 
+                             Math.abs(data[idx + 2] - data[bottomIdx + 2]);
+                             
+          const diffLeft = Math.abs(data[idx] - data[leftIdx]) + 
+                           Math.abs(data[idx + 1] - data[leftIdx + 1]) + 
+                           Math.abs(data[idx + 2] - data[leftIdx + 2]);
+                           
+          const diffRight = Math.abs(data[idx] - data[rightIdx]) + 
+                            Math.abs(data[idx + 1] - data[rightIdx + 1]) + 
+                            Math.abs(data[idx + 2] - data[rightIdx + 2]);
+          
+          // Mark as edge if difference is above threshold
+          if (diffTop > threshold || diffBottom > threshold || 
+              diffLeft > threshold || diffRight > threshold) {
+            edges[y * canvas.width + x] = 255;
+          }
+        }
+      }
+      
+      // Second pass - flood fill from edges to find foreground
+      const queue: Array<[number, number]> = [];
+      const visited = new Uint8Array(canvas.width * canvas.height);
+      
+      // Start from edges
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          if (edges[y * canvas.width + x] > 0) {
+            queue.push([x, y]);
+            visited[y * canvas.width + x] = 1;
+          }
+        }
+      }
+      
+      // Directions for flood fill (4-connected)
+      const dx = [0, 1, 0, -1];
+      const dy = [-1, 0, 1, 0];
+      
+      // Simple flood fill
+      while (queue.length > 0) {
+        const [x, y] = queue.shift()!;
+        
+        for (let i = 0; i < 4; i++) {
+          const nx = x + dx[i];
+          const ny = y + dy[i];
+          
+          if (nx >= 0 && nx < canvas.width && ny >= 0 && ny < canvas.height && 
+              !visited[ny * canvas.width + nx]) {
+            visited[ny * canvas.width + nx] = 1;
+            queue.push([nx, ny]);
+          }
+        }
+      }
+      
+      // Create result with transparent background
+      for (let i = 0; i < data.length; i += 4) {
+        const x = (i / 4) % canvas.width;
+        const y = Math.floor((i / 4) / canvas.width);
+        const pixelIndex = y * canvas.width + x;
+        
+        // Copy color channels
+        resultData[i] = data[i];
+        resultData[i + 1] = data[i + 1];
+        resultData[i + 2] = data[i + 2];
+        
+        // Set alpha channel - transparent if not visited
+        resultData[i + 3] = visited[pixelIndex] ? data[i + 3] : 0;
+      }
+      
+      resultCtx.putImageData(resultImageData, 0, 0);
+      resolve(resultCanvas);
+    } catch (error) {
+      console.error('Error removing background:', error);
+      resolve(null);
+    }
+  });
+};
+
 // Available filters
 export const filters = [
   { name: 'Normal', class: '' },

@@ -9,8 +9,11 @@ import {
   getFilterClass,
   filters,
   rotateImage,
-  createCanvas 
+  createCanvas,
+  removeBgFromCanvas
 } from '@/lib/imageUtils';
+import CropOverlay from './CropOverlay';
+import ResizeDialog from './ResizeDialog';
 
 const ImageEditor: React.FC = () => {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -23,6 +26,10 @@ const ImageEditor: React.FC = () => {
   const [selectedFilter, setSelectedFilter] = useState('Normal');
   const [rotation, setRotation] = useState(0);
   const [isCropping, setIsCropping] = useState(false);
+  const [cropRect, setCropRect] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [isResizing, setIsResizing] = useState(false);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +51,10 @@ const ImageEditor: React.FC = () => {
       img.onload = () => {
         setOriginalImage(img);
         setImageSrc(e.target?.result as string);
+        setDimensions({
+          width: img.width,
+          height: img.height
+        });
         // Reset all adjustments
         setAdjustments({
           brightness: 100,
@@ -52,6 +63,8 @@ const ImageEditor: React.FC = () => {
         });
         setSelectedFilter('Normal');
         setRotation(0);
+        setIsCropping(false);
+        setCropRect({ x: 0, y: 0, width: 0, height: 0 });
         toast.success('Image loaded successfully');
         
         // Dispatch event to notify image is loaded
@@ -90,9 +103,124 @@ const ImageEditor: React.FC = () => {
   
   // Toggle crop mode
   const handleCropToggle = () => {
-    setIsCropping(prev => !prev);
-    if (!isCropping) {
-      toast.info('Crop mode enabled. Implement cropping feature in the next version.');
+    if (isCropping) {
+      // Apply crop
+      applyCrop();
+    } else {
+      // Enter crop mode
+      setIsCropping(true);
+      if (canvasRef.current) {
+        // Initialize crop rectangle to full image
+        setCropRect({ 
+          x: 0, 
+          y: 0, 
+          width: canvasRef.current.width, 
+          height: canvasRef.current.height 
+        });
+      }
+      toast.info('Crop mode enabled. Drag to select crop area.');
+    }
+  };
+
+  // Apply crop to the image
+  const applyCrop = () => {
+    if (!canvasRef.current || !originalImage || !cropRect.width || !cropRect.height) {
+      setIsCropping(false);
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Create a temporary canvas with the cropped area
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = cropRect.width;
+    tempCanvas.height = cropRect.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
+
+    // Draw only the cropped area
+    tempCtx.drawImage(
+      canvas, 
+      cropRect.x, 
+      cropRect.y, 
+      cropRect.width, 
+      cropRect.height,
+      0, 
+      0, 
+      cropRect.width, 
+      cropRect.height
+    );
+
+    // Create a new image from the cropped canvas
+    const newImg = new Image();
+    newImg.onload = () => {
+      setOriginalImage(newImg);
+      setDimensions({
+        width: cropRect.width,
+        height: cropRect.height
+      });
+      
+      // Update canvas dimensions
+      canvas.width = cropRect.width;
+      canvas.height = cropRect.height;
+      
+      // Draw the new image
+      ctx.drawImage(newImg, 0, 0);
+      setIsCropping(false);
+      toast.success('Image cropped successfully');
+    };
+    newImg.src = tempCanvas.toDataURL();
+  };
+
+  // Handle crop rectangle changes
+  const handleCropChange = (rect: {x: number, y: number, width: number, height: number}) => {
+    setCropRect(rect);
+  };
+  
+  // Toggle resize dialog
+  const handleResizeToggle = () => {
+    setIsResizing(!isResizing);
+  };
+
+  // Apply resize
+  const handleResize = (newWidth: number, newHeight: number) => {
+    if (!originalImage) return;
+
+    setDimensions({
+      width: newWidth,
+      height: newHeight
+    });
+
+    toast.success(`Image resized to ${newWidth}x${newHeight}`);
+    setIsResizing(false);
+  };
+
+  // Handle remove background
+  const handleRemoveBackground = async () => {
+    if (!canvasRef.current || !originalImage) return;
+    
+    try {
+      setIsRemovingBg(true);
+      toast.info('Removing background. This may take a moment...');
+      
+      const resultCanvas = await removeBgFromCanvas(canvasRef.current);
+      
+      if (resultCanvas) {
+        // Create a new image from the result
+        const newImg = new Image();
+        newImg.onload = () => {
+          setOriginalImage(newImg);
+          setIsRemovingBg(false);
+          toast.success('Background removed successfully');
+        };
+        newImg.src = resultCanvas.toDataURL();
+      }
+    } catch (error) {
+      console.error('Error removing background:', error);
+      toast.error('Failed to remove background');
+      setIsRemovingBg(false);
     }
   };
   
@@ -105,6 +233,7 @@ const ImageEditor: React.FC = () => {
     });
     setSelectedFilter('Normal');
     setRotation(0);
+    setIsCropping(false);
     toast.success('Reset all adjustments');
   };
   
@@ -155,13 +284,13 @@ const ImageEditor: React.FC = () => {
     
     if (!ctx) return;
     
-    // Set canvas dimensions to match image
-    canvas.width = originalImage.width;
-    canvas.height = originalImage.height;
+    // Set canvas dimensions to match image or custom dimensions
+    canvas.width = dimensions.width || originalImage.width;
+    canvas.height = dimensions.height || originalImage.height;
     
     // Draw the image
-    ctx.drawImage(originalImage, 0, 0);
-  }, [originalImage]);
+    ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+  }, [originalImage, dimensions]);
   
   // Update canvas when adjustments or filter changes
   useEffect(() => {
@@ -191,7 +320,7 @@ const ImageEditor: React.FC = () => {
     
     // Draw the image with rotation if needed
     if (rotation % 360 !== 0) {
-      let rotatedCanvas = createCanvas(originalImage, originalImage.width, originalImage.height);
+      let rotatedCanvas = createCanvas(originalImage, canvas.width, canvas.height);
       rotatedCanvas = rotateImage(rotatedCanvas, rotation);
       
       // Center the rotated image
@@ -201,9 +330,9 @@ const ImageEditor: React.FC = () => {
       ctx.drawImage(rotatedCanvas, xOffset, yOffset);
     } else {
       // Draw without rotation
-      ctx.drawImage(originalImage, 0, 0);
+      ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
     }
-  }, [adjustments, selectedFilter, rotation, originalImage]);
+  }, [adjustments, selectedFilter, rotation, originalImage, dimensions]);
   
   return (
     <div className="w-full px-6 flex-1 flex flex-col items-center justify-center">
@@ -258,6 +387,14 @@ const ImageEditor: React.FC = () => {
                 ref={canvasRef} 
                 className="max-w-full max-h-[70vh] object-contain mx-auto"
               />
+              
+              {isCropping && (
+                <CropOverlay
+                  canvas={canvasRef.current}
+                  initialRect={cropRect}
+                  onCropChange={handleCropChange}
+                />
+              )}
             </div>
             
             <ToolPanel
@@ -269,10 +406,24 @@ const ImageEditor: React.FC = () => {
               onRotateLeft={() => handleRotate('left')}
               onRotateRight={() => handleRotate('right')}
               onCrop={handleCropToggle}
+              isCropping={isCropping}
+              onResize={handleResizeToggle}
+              onRemoveBackground={handleRemoveBackground}
+              isRemovingBg={isRemovingBg}
               onReset={handleReset}
             />
           </div>
         </div>
+      )}
+      
+      {isResizing && (
+        <ResizeDialog
+          width={dimensions.width}
+          height={dimensions.height}
+          onResize={handleResize}
+          onCancel={() => setIsResizing(false)}
+          open={isResizing}
+        />
       )}
     </div>
   );

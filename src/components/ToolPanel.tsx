@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AdjustmentSlider from './AdjustmentSlider';
 import FilterPreview from './FilterPreview';
 import { Button } from "@/components/ui/button";
-import { RotateCw, RotateCcw, Crop, Undo } from 'lucide-react';
+import { RotateCw, RotateCcw, Crop, Undo, ImageIcon, Eraser } from 'lucide-react';
 
 interface ToolPanelProps {
   imageSrc: string | null;
@@ -14,11 +14,15 @@ interface ToolPanelProps {
     saturation: number;
   };
   selectedFilter: string;
+  isCropping?: boolean;
+  isRemovingBg?: boolean;
   onAdjustmentChange: (name: string, value: number) => void;
   onFilterSelect: (filter: string) => void;
   onRotateLeft: () => void;
   onRotateRight: () => void;
   onCrop: () => void;
+  onResize: () => void;
+  onRemoveBackground: () => void;
   onReset: () => void;
 }
 
@@ -37,11 +41,15 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   imageSrc,
   adjustments,
   selectedFilter,
+  isCropping = false,
+  isRemovingBg = false,
   onAdjustmentChange,
   onFilterSelect,
   onRotateLeft,
   onRotateRight,
   onCrop,
+  onResize,
+  onRemoveBackground,
   onReset
 }) => {
   if (!imageSrc) return null;
@@ -61,11 +69,11 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         </Button>
       </div>
       
-      <div className="flex space-x-2 mb-4">
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <Button 
           variant="outline" 
           size="sm" 
-          className="flex-1 tool-button"
+          className="tool-button"
           onClick={onRotateLeft}
         >
           <RotateCcw className="h-4 w-4" />
@@ -73,18 +81,40 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         <Button 
           variant="outline" 
           size="sm" 
-          className="flex-1 tool-button"
+          className="tool-button"
           onClick={onRotateRight}
         >
           <RotateCw className="h-4 w-4" />
         </Button>
         <Button 
-          variant="outline" 
+          variant={isCropping ? "default" : "outline"} 
           size="sm" 
-          className="flex-1 tool-button"
+          className="tool-button"
           onClick={onCrop}
         >
           <Crop className="h-4 w-4" />
+        </Button>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="tool-button"
+          onClick={onResize}
+        >
+          <ImageIcon className="h-4 w-4 mr-1" />
+          Resize
+        </Button>
+        <Button 
+          variant={isRemovingBg ? "default" : "outline"} 
+          size="sm" 
+          className="tool-button"
+          onClick={onRemoveBackground}
+          disabled={isRemovingBg}
+        >
+          <Eraser className="h-4 w-4 mr-1" />
+          {isRemovingBg ? 'Processing...' : 'Remove BG'}
         </Button>
       </div>
       

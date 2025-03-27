@@ -11,7 +11,6 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    {/* Remove the TooltipProvider from here as it's causing issues */}
     <Toaster />
     <Sonner />
     <BrowserRouter>
